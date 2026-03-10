@@ -43,10 +43,25 @@ def format_number(val):
     except:
         return val
 
+def format_value_recursive(val):
+    """
+    递归格式化数值
+    """
+    if isinstance(val, (int, float)):
+        return format_number(val)
+    elif isinstance(val, dict):
+        return {k: format_value_recursive(v) for k, v in val.items()}
+    elif isinstance(val, list):
+        return [format_value_recursive(v) for v in val]
+    return val
+
 def format_dataframe(df: pd.DataFrame) -> str:
     """
     格式化 DataFrame 为 Markdown 表格
     """
+    if df.empty:
+        return ""
+        
     # 复制一份副本以免修改原数据
     df_show = df.copy()
     
@@ -62,9 +77,9 @@ def format_dataframe(df: pd.DataFrame) -> str:
         # 对数值进行格式化
         df_show[col] = df_show[col].apply(format_number)
 
-    # 截断过长的列和行
-    if len(df_show.columns) > 8:
-        df_show = df_show.iloc[:, :8]
+    # 截断过长的列和行，以适应聊天窗口
+    if len(df_show.columns) > 6:
+        df_show = df_show.iloc[:, :6]
     if len(df_show) > 10:
         df_show = df_show.head(10)
         
@@ -76,6 +91,9 @@ def format_dict_result(data: dict) -> str:
     """
     result_parts = []
     
+    # 忽略的无用字段
+    IGNORE_KEYS = ['txt1', 'txt2', 'code', 'url', 'wencai_data', 'meta', 'pid', 'logid', 'extra']
+    
     # 优先处理 txt2 或 txt1 这种包含主要文本描述的字段
     main_text = data.get('txt2') or data.get('txt1')
     if main_text:
@@ -84,35 +102,51 @@ def format_dict_result(data: dict) -> str:
 
     # 处理其他字段
     for key, value in data.items():
-        if key in ['txt1', 'txt2', 'code', 'url', 'wencai_data']: # 跳过已处理或不需要的字段
+        # 过滤掉无用的内部字段
+        if any(k in key.lower() for k in IGNORE_KEYS):
             continue
             
         if isinstance(value, dict):
-            # 处理嵌套字典，例如 '拓维信息主营收入构成'
+            # 处理嵌套字典
             result_parts.append(f"**{key}**:")
-            # 将嵌套字典转换为 Markdown 表格
             try:
-                sub_df = pd.DataFrame(list(value.items()), columns=['项目', '数值'])
-                result_parts.append(format_dataframe(sub_df))
+                # 尝试将其转换为两列的小表格展示
+                items = []
+                for k, v in value.items():
+                    if any(ik in k.lower() for ik in IGNORE_KEYS): continue
+                    items.append({'项目': k, '数值': format_number(v)})
+                if items:
+                    sub_df = pd.DataFrame(items)
+                    result_parts.append(format_dataframe(sub_df))
+                else:
+                    result_parts.append("(无有效数据)")
             except:
-                # 转换失败则直接显示文本
                 for sub_k, sub_v in value.items():
-                    result_parts.append(f"- {sub_k}: {sub_v}")
+                    if any(ik in sub_k.lower() for ik in IGNORE_KEYS): continue
+                    result_parts.append(f"- {sub_k}: {format_number(sub_v)}")
             result_parts.append("") # 空行
             
         elif isinstance(value, list):
+            if not value: continue
+            
             result_parts.append(f"**{key}**:")
-            # 检查列表是否全是字典，如果是，尝试转 DataFrame
-            if value and isinstance(value[0], dict):
+            # 检查列表是否全是字典，如果是（如龙虎榜数据），尝试转 DataFrame
+            if isinstance(value[0], dict):
                  try:
-                    sub_df = pd.DataFrame(value)
+                    # 过滤掉字典中的无用键
+                    cleaned_list = []
+                    for item in value:
+                        cleaned_item = {k: v for k, v in item.items() if not any(ik in k.lower() for ik in IGNORE_KEYS)}
+                        cleaned_list.append(cleaned_item)
+                    
+                    sub_df = pd.DataFrame(cleaned_list)
                     result_parts.append(format_dataframe(sub_df))
                  except:
                     for item in value:
-                        result_parts.append(f"- {item}")
+                        result_parts.append(f"- {format_value_recursive(item)}")
             else:
                 for item in value:
-                    result_parts.append(f"- {item}")
+                    result_parts.append(f"- {format_value_recursive(item)}")
             result_parts.append("")
         
         elif isinstance(value, pd.DataFrame):
@@ -122,16 +156,14 @@ def format_dict_result(data: dict) -> str:
             
         else:
             # 普通键值对
-            # 如果 value 也是一段很长的 HTML，也清理一下
             if isinstance(value, str) and ('<' in value and '>' in value):
                 value = clean_html(value)
-            # 如果 value 是很长的 DataFrame 字符串表示（用户遇到的情况），尝试跳过或特殊处理
-            if isinstance(value, str) and "rows x" in value and "columns" in value:
-                 # 这通常是 DataFrame 的默认 str() 输出，说明 pywencai 可能把 df 转成了 str
-                 # 这里我们可能无法还原，只能建议用户看上面的表格（如果有）
+            
+            # 过滤掉包含 DataFrame 内部状态描述的字符串
+            if isinstance(value, str) and ("rows x" in value and "columns" in value):
                  continue 
             
-            result_parts.append(f"**{key}**: {value}")
+            result_parts.append(f"**{key}**: {format_number(value)}")
             
     return "\n".join(result_parts)
 
