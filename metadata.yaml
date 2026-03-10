@@ -2,7 +2,7 @@ name: astrbot_plugin_wencai
 display_name: 同花顺问财查询
 desc: 接入同花顺问财接口，支持通过自然语言查询股票选股逻辑和实时数据。
 author: fuchaohan
-version: 1.0.0
+version: 1.0.1
 repo: https://github.com/fuchaohan/astrbot_plugin_wencai
 tags:
   - stock
