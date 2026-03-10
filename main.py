@@ -23,7 +23,7 @@ def clean_html(raw_html):
     text = re.sub(r'<[^>]+>', '', text)
     # 处理 HTML 实体
     text = text.replace('&nbsp;', ' ').replace('\u3000', ' ').replace('&gt;', '>').replace('&lt;', '<')
-    # 去除多余的空行 and 首尾空白
+    # 去除多余的空行和首尾空白
     text = re.sub(r'\n\s*\n', '\n', text).strip()
     return text
 
@@ -167,7 +167,7 @@ def format_dict_result(data: dict) -> str:
             
     return "\n".join(result_parts)
 
-@register("wencai_plugin", "fuchaohan", "同花顺问财查询插件", "1.0.0")
+@register("wencai_plugin", "fuchaohan", "同花顺问财查询插件", "1.0.1")
 class WencaiPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
