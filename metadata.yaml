@@ -2,7 +2,7 @@ name: astrbot_plugin_wencai
 display_name: 同花顺问财查询
 desc: 接入同花顺问财（iFinD/Wencai）接口，支持通过自然语言在 AstrBot 中查询股票选股逻辑、实时行情和基本面数据。
 author: 卢奇亚诺
-version: 1.0.1
+version: 1.0.2
 repo: https://github.com/fuchaohan/astrbot_plugin_wencai
 tags:
   - stock
