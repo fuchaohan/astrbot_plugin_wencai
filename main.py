@@ -23,9 +23,52 @@ def clean_html(raw_html):
     text = re.sub(r'<[^>]+>', '', text)
     # 处理 HTML 实体
     text = text.replace('&nbsp;', ' ').replace('\u3000', ' ').replace('&gt;', '>').replace('&lt;', '<')
-    # 去除多余的空行和首尾空白
+    # 去除多余的空行 and 首尾空白
     text = re.sub(r'\n\s*\n', '\n', text).strip()
     return text
+
+def format_number(val):
+    """
+    格式化数字，将大数值转换为亿/万单位，保留两位小数
+    """
+    try:
+        if isinstance(val, (int, float)):
+            if abs(val) >= 1e8:
+                return f"{val/1e8:.2f}亿"
+            elif abs(val) >= 1e4:
+                return f"{val/1e4:.2f}万"
+            else:
+                return f"{val:.2f}"
+        return val
+    except:
+        return val
+
+def format_dataframe(df: pd.DataFrame) -> str:
+    """
+    格式化 DataFrame 为 Markdown 表格
+    """
+    # 复制一份副本以免修改原数据
+    df_show = df.copy()
+    
+    # 尝试将所有数值列进行格式化
+    for col in df_show.columns:
+        # 如果列名包含“日期”，尝试转换日期格式
+        if '日期' in str(col):
+             try:
+                df_show[col] = pd.to_datetime(df_show[col]).dt.strftime('%Y-%m-%d')
+             except:
+                 pass
+        
+        # 对数值进行格式化
+        df_show[col] = df_show[col].apply(format_number)
+
+    # 截断过长的列和行
+    if len(df_show.columns) > 8:
+        df_show = df_show.iloc[:, :8]
+    if len(df_show) > 10:
+        df_show = df_show.head(10)
+        
+    return df_show.to_markdown(index=False)
 
 def format_dict_result(data: dict) -> str:
     """
@@ -41,7 +84,7 @@ def format_dict_result(data: dict) -> str:
 
     # 处理其他字段
     for key, value in data.items():
-        if key in ['txt1', 'txt2', 'code', 'url']: # 跳过已处理或不需要的字段
+        if key in ['txt1', 'txt2', 'code', 'url', 'wencai_data']: # 跳过已处理或不需要的字段
             continue
             
         if isinstance(value, dict):
@@ -50,7 +93,7 @@ def format_dict_result(data: dict) -> str:
             # 将嵌套字典转换为 Markdown 表格
             try:
                 sub_df = pd.DataFrame(list(value.items()), columns=['项目', '数值'])
-                result_parts.append(sub_df.to_markdown(index=False))
+                result_parts.append(format_dataframe(sub_df))
             except:
                 # 转换失败则直接显示文本
                 for sub_k, sub_v in value.items():
@@ -59,15 +102,35 @@ def format_dict_result(data: dict) -> str:
             
         elif isinstance(value, list):
             result_parts.append(f"**{key}**:")
-            for item in value:
-                result_parts.append(f"- {item}")
+            # 检查列表是否全是字典，如果是，尝试转 DataFrame
+            if value and isinstance(value[0], dict):
+                 try:
+                    sub_df = pd.DataFrame(value)
+                    result_parts.append(format_dataframe(sub_df))
+                 except:
+                    for item in value:
+                        result_parts.append(f"- {item}")
+            else:
+                for item in value:
+                    result_parts.append(f"- {item}")
             result_parts.append("")
+        
+        elif isinstance(value, pd.DataFrame):
+             result_parts.append(f"**{key}**:")
+             result_parts.append(format_dataframe(value))
+             result_parts.append("")
             
         else:
             # 普通键值对
             # 如果 value 也是一段很长的 HTML，也清理一下
             if isinstance(value, str) and ('<' in value and '>' in value):
                 value = clean_html(value)
+            # 如果 value 是很长的 DataFrame 字符串表示（用户遇到的情况），尝试跳过或特殊处理
+            if isinstance(value, str) and "rows x" in value and "columns" in value:
+                 # 这通常是 DataFrame 的默认 str() 输出，说明 pywencai 可能把 df 转成了 str
+                 # 这里我们可能无法还原，只能建议用户看上面的表格（如果有）
+                 continue 
+            
             result_parts.append(f"**{key}**: {value}")
             
     return "\n".join(result_parts)
@@ -105,21 +168,10 @@ class WencaiPlugin(Star):
                 # 这里只做简单的截断处理，避免消息过长
                 df = res
                 
-                # 如果列太多，只取前 5 列
-                if len(df.columns) > 5:
-                    df = df.iloc[:, :5]
+                # 使用新的格式化函数
+                markdown_table = format_dataframe(df)
                 
-                # 如果行太多，只取前 10 行
-                if len(df) > 10:
-                    df = df.head(10)
-                    msg_suffix = "\n(数据过多，仅显示前10条)"
-                else:
-                    msg_suffix = ""
-
-                # 转换为 Markdown 表格
-                markdown_table = df.to_markdown(index=False)
-                
-                yield event.plain_result(f"查询结果：\n\n{markdown_table}{msg_suffix}")
+                yield event.plain_result(f"查询结果：\n\n{markdown_table}")
                 
             elif isinstance(res, dict):
                 # 处理字典类型的返回结果（如百科类查询）
