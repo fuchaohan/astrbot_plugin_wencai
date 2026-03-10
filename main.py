@@ -167,7 +167,7 @@ def format_dict_result(data: dict) -> str:
             
     return "\n".join(result_parts)
 
-@register("wencai_plugin", "fuchaohan", "同花顺问财查询插件", "1.0.1")
+@register("wencai_plugin", "卢奇亚诺", "同花顺问财查询插件", "1.0.1")
 class WencaiPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
